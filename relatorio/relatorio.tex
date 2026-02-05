@@ -40,8 +40,8 @@
 
 \title{Relatório de Projeto: Compilador SL}
 \author{
-    Nome do Aluno \\
-    Matrícula: \\
+    Thalles Felipe e Júlia Gonzaga\\
+    21.2.4130 e 21.2.4115\\
     BCC328 - Construção de Compiladores I - DECOM/UFOP
 }
 \date{\today}
@@ -51,58 +51,138 @@
 \maketitle
 
 \begin{abstract}
+Este relatório apresenta o desenvolvimento do front-end de um compilador para a linguagem SL (Simple Language), desenvolvido em Haskell. O projeto abrange a implementação do analisador léxico, analisador sintático, definição da Árvore de Sintaxe Abstrata (AST) e um formatador de código (Pretty Printer). Utilizando a biblioteca Megaparsec e os recursos de tipagem forte e pattern matching do Haskell, foi construída uma base robusta capaz de reconhecer estruturas complexas como funções, registros, arranjos e polimorfismo paramétrico, preparando o terreno para futuras etapas de análise semântica e geração de código.
 \end{abstract}
 
 \tableofcontents
 
 \section{Introdução}
 
+Este trabalho prático tem como objetivo o desenvolvimento das etapas iniciais de um compilador para a linguagem de programação SL, utilizando a linguagem Haskell. A linguagem SL é uma linguagem simples, porém expressiva, projetada para fins didáticos, oferecendo suporte a tipagem estática, funções, estruturas de controle, arranjos, registros e polimorfismo paramétrico. O trabalho foi desenvolvido em dupla, seguindo as orientações da disciplina BCC328 – Construção de Compiladores I. Nesta primeira etapa, o foco está na implementação do front-end do compilador, incluindo a análise léxica, a análise sintática, a definição da árvore de sintaxe abstrata (AST) e a implementação de um pretty printer.
+
+
+O objetivo principal desta etapa é transformar o código-fonte escrito em SL em uma representação interna estruturada, que possa ser utilizada nas etapas posteriores de análise semântica e geração de código WebAssembly.
+
 \section{Metodologia}
+
+O desenvolvimento do compilador seguiu a arquitetura clássica de compiladores, dividindo o processo em módulos bem definidos. Inicialmente, foi realizada a análise do enunciado e dos exemplos fornecidos, a partir dos quais foi definida a gramática da linguagem SL.
+
+A implementação foi feita de forma incremental, começando pelo analisador léxico, seguido pelo analisador sintático, pela definição da AST e, por fim, pelo pretty printer. A biblioteca Megaparsec foi utilizada tanto para a análise léxica quanto para a sintática, por oferecer uma abordagem declarativa e mensagens de erro mais claras.
+
+O trabalho em dupla permitiu dividir responsabilidades, discutir decisões de projeto e revisar o código produzido, contribuindo para maior organização e qualidade da implementação.
 
 \subsection{Estrutura sintática de SL}
 
+A estrutura sintática da linguagem SL foi definida com base nos exemplos apresentados no enunciado do trabalho. A linguagem possui uma sintaxe semelhante à de linguagens imperativas tradicionais, facilitando sua compreensão.
+
+Entre as principais construções sintáticas da linguagem, destacam-se:
+
+\begin{itemize}
+  \item Declaração de variáveis com ou sem tipo explícito
+  \item Declaração e chamada de funções
+  \item Estruturas de controle como \texttt{if-else}, \texttt{while} e \texttt{for}
+  \item Uso de arranjos unidimensionais e registros (\texttt{struct})
+  \item Expressões aritméticas, relacionais e lógicas
+\end{itemize}
+
+A gramática foi implementada utilizando parsers descendentes recursivos, respeitando a precedência e associatividade dos operadores.
+
 \subsection{Sistema de tipos para SL}
+
+A linguagem SL possui um sistema de tipos estático, composto por tipos básicos como \texttt{int}, \texttt{float}, \texttt{string}, \texttt{bool} e \texttt{void}. Além desses, a linguagem suporta tipos mais complexos, como arranjos, registros e tipos função.
+
+Os tipos são representados internamente por meio de um tipo algébrico definido no módulo \texttt{AST}, o que facilita tanto a análise sintática quanto futuras verificações semânticas.
 
 \subsection{Inferência de tipos para SL}
 
+A linguagem SL permite inferência parcial de tipos, possibilitando que variáveis e parâmetros de funções sejam declarados sem um tipo explícito. Nesses casos, o tipo pode ser inferido a partir do contexto de uso.
+
+Nesta etapa do trabalho, a inferência de tipos ainda não é realizada de forma completa, porém a AST foi projetada para permitir essa funcionalidade em etapas futuras. Isso é feito utilizando o tipo \texttt{Maybe Type}, indicando quando o tipo é opcional.
+
 \subsection{Semântica operacional para SL}
 
+A semântica operacional da linguagem SL segue o modelo imperativo tradicional, no qual comandos são executados sequencialmente e expressões são avaliadas para produzir valores. Embora a execução do programa não seja realizada nesta etapa do compilador, a semântica está implicitamente representada na estrutura da AST, que preserva a ordem dos comandos e a organização dos blocos de código.
 
 \section{Arquitetura do Compilador}
 
+O compilador foi estruturado de forma modular, seguindo as etapas clássicas de um compilador. Cada módulo possui uma responsabilidade bem definida, facilitando a manutenção e a evolução do projeto.
+
 \subsection{Análise léxica}
+
+A análise léxica é responsável por ler o código-fonte e transformá-lo em uma sequência de tokens. Cada token representa uma unidade básica da linguagem, como identificadores, palavras reservadas, operadores ou literais.
+
+O analisador léxico foi implementado com Megaparsec e também é responsável por ignorar espaços em branco e comentários, além de registrar a posição dos tokens no código-fonte para facilitar a identificação de erros.
 
 \subsection{Análise sintática}
 
+A análise sintática recebe os tokens gerados pelo lexer e verifica se eles seguem as regras da gramática da linguagem SL. Caso o código esteja correto, o parser constrói a árvore de sintaxe abstrata correspondente. O parser foi implementado utilizando Megaparsec, explorando combinadores para expressar regras gramaticais de forma clara e organizada.
+
 \subsection{Árvore de sintaxe abstrata}
+
+A árvore de sintaxe abstrata (AST) representa a estrutura lógica do programa, independentemente da forma como ele foi escrito no código-fonte. Cada nó da AST corresponde a uma construção da linguagem, como expressões, comandos ou declarações.
+
+A AST foi definida no módulo \texttt{AST.hs} utilizando tipos algébricos, o que garante maior clareza e segurança na manipulação dessas estruturas.
 
 \subsection{Análise semântica}
 
+A análise semântica será responsável por verificar regras mais profundas da linguagem, como compatibilidade de tipos, escopo de variáveis e uso correto de identificadores. Essa etapa ainda não foi implementada nesta fase do trabalho, mas a estrutura do compilador já está preparada para recebê-la.
+
 \subsection{Geração de código}
+
+A geração de código será a etapa final do compilador, responsável por traduzir a AST para código WebAssembly (WAT). Embora não faça parte desta entrega, o projeto foi desenvolvido de forma a permitir essa extensão futuramente.
 
 \section{Resultados e Discussão}
 
 \subsection{Instruções de Uso}
 
+O compilador disponibiliza uma interface de linha de comando com as seguintes opções:
 
-\subsection{Testes Realizados}
+\begin{itemize}
+  \item \texttt{-lexer}: executa apenas a análise léxica e imprime os tokens encontrados.
+  \item \texttt{-parser}: executa a análise léxica e sintática, exibindo a AST gerada.
+  \item \texttt{-pretty}: executa o pretty printer, exibindo o código SL formatado.
+\end{itemize}
 
+\subsection{Testes Realizados e Estratégia de Testes}
+
+Foram realizados testes utilizando os exemplos fornecidos no enunciado do trabalho, incluindo funções recursivas, uso de arranjos, structs e expressões booleanas. Os resultados obtidos demonstraram que o lexer, o parser e o pretty printer funcionam corretamente para os casos testados.
+
+A validação do compilador foi realizada através de uma suíte de testes automatizados implementada no módulo \texttt{Spec.hs}, totalizando dezenas de casos de teste que cobrem todas as fases do front-end. A infraestrutura de testes foi dividida em cinco grupos principais:
+
+\begin{enumerate}
+    \item \textbf{Testes Léxicos:} Verificam o reconhecimento correto de todos os tokens da linguagem, incluindo palavras reservadas, identificadores, literais (inteiros, floats, strings, booleanos) e operadores. Também validam o descarte correto de comentários de linha e bloco.
+    
+    \item \textbf{Testes Sintáticos (Sucesso):} Garantem que programas válidos gerem a AST correta. Foram testados cenários variados, desde funções simples e declarações de variáveis até estruturas complexas como \texttt{structs}, manipulação de arranjos, laços \texttt{for/while} e uso de \textit{generics} (\texttt{forall}).
+    
+    \item \textbf{Testes de Rejeição (Erros):} Validam se o parser rejeita corretamente programas malformados, como falta de ponto-e-vírgula, parênteses desbalanceados ou uso de palavras reservadas como identificadores.
+    
+    \item \textbf{Testes do Pretty Printer:} Asseguram que a conversão da AST de volta para código fonte produz uma saída formatada corretamente e legível.
+    
+    \item \textbf{Testes de Round-Trip:} Uma técnica que verifica a consistência do compilador realizando o ciclo: $Parser \rightarrow AST \rightarrow PrettyPrinter \rightarrow Parser$. O teste garante que o código re-analisado gera uma estrutura semanticamente equivalente à original.
+\end{enumerate}
+
+Além dos testes unitários via \texttt{cabal test}, foi desenvolvido um script de integração (\texttt{test-all.sh}) que executa o compilador contra arquivos de exemplo reais (ex: \texttt{factorial.sl}, \texttt{struct.sl}), validando o funcionamento ponta a ponta da ferramenta de linha de comando.
 
 \subsection{Limitações}
 
+Nesta etapa do projeto, o compilador ainda não realiza análise semântica completa nem geração de código executável. Além disso, a inferência de tipos é limitada e não detecta erros mais complexos. Essas limitações serão tratadas nas próximas etapas do trabalho.
+
 \section{Conclusão}
 
-\section{Referências}
+A implementação das etapas iniciais do compilador para a linguagem SL permitiu aplicar, de forma prática, os conceitos estudados na disciplina de Construção de Compiladores. O uso de Haskell e da biblioteca Megaparsec facilitou a construção de uma solução modular e bem estruturada.
+
+O trabalho em dupla contribuiu para a troca de ideias e para a melhoria da qualidade do código desenvolvido. As bases estabelecidas nesta etapa permitem a continuação do projeto com a implementação da análise semântica e da geração de código nas próximas fases.
 
 \begin{thebibliography}{9}
 \bibitem{hutton2016}
 Hutton, G. (2016). \emph{Programming in Haskell}. Cambridge University Press.
 
-\bibitem{appel1998}
-Appel, A. W. (1998). \emph{Modern Compiler Implementation in ML}. Cambridge University Press.
-
 \bibitem{webassembly2023}
 WebAssembly Community Group. (2023). \emph{WebAssembly Specification}.
+
+\bibitem{materialBCC328}
+ Material didático da disciplina BCC328 – Construção de Compiladores I.\emph{Material didático BCC328}.
+ 
 \end{thebibliography}
 
 \end{document}

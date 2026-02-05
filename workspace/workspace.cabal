@@ -1,0 +1,64 @@
+cabal-version:      3.0
+name:               workspace
+version:            0.1.0.0
+synopsis:           Compilador para a linguagem SL
+description:        Front-end do compilador SL (Simple Language) desenvolvido
+                    para a disciplina BCC328 - Construção de Compiladores I.
+                    Inclui análise léxica, sintática e pretty-printer.
+license:            BSD-3-Clause
+license-file:       LICENSE
+author:             Thalles Felipe, Júlia Gonzaga
+maintainer:         th4ll3sf3l1p3@gmail.com
+build-type:         Simple
+extra-doc-files:    CHANGELOG.md
+
+-- Opções comuns a todos os componentes
+common opts
+    ghc-options:        -Wall -Wcompat -Widentities
+                        -Wincomplete-record-updates
+                        -Wincomplete-uni-patterns
+                        -Wmissing-home-modules
+                        -Wpartial-fields
+                        -Wredundant-constraints
+    default-language:   GHC2021
+    default-extensions: ImportQualifiedPost
+                        LambdaCase
+                        OverloadedStrings
+
+-- Biblioteca principal: AST, Lexer, Parser, Pretty
+library
+    import:           opts
+    exposed-modules:  SL.AST
+                    , SL.Lexer
+                    , SL.Parser
+                    , SL.Pretty
+    build-depends:    base >= 4.17 && < 5
+                    , megaparsec >= 9.0
+                    , parser-combinators >= 1.3
+                    , containers
+                    , pretty
+                    , text
+    hs-source-dirs:   src
+
+-- CLI (slc)
+executable slc
+    import:           opts
+    main-is:          Main.hs
+    build-depends:    base >= 4.17 && < 5
+                    , workspace
+                    , megaparsec >= 9.0
+                    , text
+                    , containers
+    hs-source-dirs:   app
+
+-- Testes
+test-suite sl-tests
+    import:           opts
+    type:             exitcode-stdio-1.0
+    main-is:          Spec.hs
+    build-depends:    base >= 4.17 && < 5
+                    , workspace
+                    , megaparsec >= 9.0
+                    , text
+                    , containers
+    hs-source-dirs:   test

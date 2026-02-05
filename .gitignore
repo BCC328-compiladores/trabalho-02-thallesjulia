@@ -25,64 +25,17 @@ cabal.sandbox.config
 *~
 *.swp
 .DS_Store
-Thumbs.db*.acn
-*.acr
-*.alg
-*.aux
-*.bak
-*.bbl
-*.bcf
-*.blg
-*.brf
-*.bst
-*.dvi
-*.fdb_latexmk
-*.fls
-*.glg
-*.glo
-*.gls
-*.idx
-*.ilg
-*.ind
-*.ist
-*.lof
-*.log
-*.lol
-*.lot
-*.maf
-*.mtc
-*.mtc1
-*.nav
-*.nlo
-*.nls
-*.out
-*.pdf
-*.pyg
-*.run.xml
-*.snm
-*.synctex.gz
-*.tex.backup
-*.tex~
-*.thm
-*.toc
-*.vrb
-*.xdy
-*.xml
-*blx.bib
-.bak
-.mtc
-build/
+Thumbs.db
 
 # Event logs and profiling
 *.prof
-*.aux
 *.hp
 *.eventlog
 
 # GHC environment files
 .ghc.environment.*
 
-#latex
+# LaTeX
 *.acn
 *.acr
 *.alg
@@ -127,6 +80,4 @@ build/
 *.xdy
 *.xml
 *blx.bib
-.bak
-.mtc
 build/
