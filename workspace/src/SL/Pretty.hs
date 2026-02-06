@@ -35,7 +35,8 @@ instance Pretty Type where
     TString -> text "string"
     TBool -> text "bool"
     TVoid -> text "void"
-    TArr t -> pretty t <> text "[]"
+    TArr t Nothing -> pretty t <> text "[]"
+    TArr t (Just n) -> pretty t <> text "[" <> int n <> text "]"
     TRecord n -> text n
     TGeneric n -> text n
     TMeta i -> text "?" <> int i

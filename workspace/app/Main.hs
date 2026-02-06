@@ -6,9 +6,11 @@ module Main where
 import Data.Text.IO qualified as TIO
 import Data.Tree (Tree (..), drawTree)
 import SL.AST
+import SL.Interpreter (formatRuntimeError, interpret)
 import SL.Lexer (formatToken, lexAll)
 import SL.Parser (parseProgram)
 import SL.Pretty (pp, ppBinOp, ppType, ppUnaryOp)
+import SL.Semantic (checkProgram, formatSemanticError)
 import System.Environment (getArgs)
 import System.Exit (exitFailure)
 import Text.Megaparsec (errorBundlePretty, parse)
@@ -19,6 +21,8 @@ main =
     ["--lexer", f] -> runLexer f
     ["--parser", f] -> runParser f
     ["--pretty", f] -> runPretty f
+    ["--check", f] -> runCheck f
+    ["--run", f] -> runInterpreter f
     _ -> usage
 
 runLexer :: FilePath -> IO ()
@@ -42,6 +46,40 @@ runPretty f = do
     Left err -> putStrLn "Erro sintatico:" >> putStrLn (errorBundlePretty err) >> exitFailure
     Right ast -> putStrLn "=== Pretty Print ===" >> putStrLn (pp ast)
 
+runCheck :: FilePath -> IO ()
+runCheck f = do
+  src <- TIO.readFile f
+  case parse parseProgram f src of
+    Left err -> putStrLn "Erro sintatico:" >> putStrLn (errorBundlePretty err) >> exitFailure
+    Right ast -> do
+      case checkProgram ast of
+        Left errs -> do
+          putStrLn "=== Erros Semanticos ==="
+          mapM_ (putStrLn . formatSemanticError) errs
+          exitFailure
+        Right () -> putStrLn "Analise semantica: OK"
+
+runInterpreter :: FilePath -> IO ()
+runInterpreter f = do
+  src <- TIO.readFile f
+  case parse parseProgram f src of
+    Left err -> putStrLn "Erro sintatico:" >> putStrLn (errorBundlePretty err) >> exitFailure
+    Right ast -> do
+      case checkProgram ast of
+        Left errs -> do
+          putStrLn "=== Erros Semanticos ==="
+          mapM_ (putStrLn . formatSemanticError) errs
+          exitFailure
+        Right () -> do
+          result <- interpret ast
+          case result of
+            Left err -> do
+              putStrLn $ formatRuntimeError err
+              exitFailure
+            Right output -> do
+              putStrLn "=== Saida do Programa ==="
+              mapM_ putStrLn output
+
 usage :: IO ()
 usage = do
   putStrLn "Compilador SL - BCC328"
@@ -52,6 +90,8 @@ usage = do
   putStrLn "  --lexer  <arq>   Analise lexica (tokens)"
   putStrLn "  --parser <arq>   Analise sintatica (AST)"
   putStrLn "  --pretty <arq>   Pretty-print"
+  putStrLn "  --check  <arq>   Analise semantica (verificacao de tipos)"
+  putStrLn "  --run    <arq>   Executar programa (interpretar)"
   exitFailure
 
 --------------------------------------------------------------------------------
