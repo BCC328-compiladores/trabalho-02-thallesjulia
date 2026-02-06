@@ -94,7 +94,7 @@ data Type
   | TString
   | TBool
   | TVoid
-  | TArr Type
+  | TArr Type (Maybe Int) -- element type, optional size
   | TRecord String
   | TGeneric String
   | TFunc [Type] Type

@@ -34,13 +34,19 @@ make clean
 
 ```bash
 # Analise lexica (tokens)
-cabal run slc -- --lexer examples/factorial.sl
+cabal run slc -- --lexer examples/example1_factorial.sl
 
 # Analise sintatica (AST)
-cabal run slc -- --parser examples/factorial.sl
+cabal run slc -- --parser examples/example1_factorial.sl
 
 # Pretty printer
-cabal run slc -- --pretty examples/factorial.sl
+cabal run slc -- --pretty examples/example1_factorial.sl
+
+# Analise semantica (checagem de tipos)
+cabal run slc -- --check examples/example1_factorial.sl
+
+# Executar programa (interpretador)
+cabal run slc -- --run examples/example1_factorial.sl
 ```
 
 ## Executando testes
@@ -62,6 +68,8 @@ workspace/
     Lexer.hs     - Analisador Lexico (Megaparsec)
     Parser.hs    - Analisador Sintatico
     Pretty.hs    - Pretty Printer
+    Semantic.hs  - Analisador Semantico (tipos e escopo)
+    Interpreter.hs - Interpretador
   app/
     Main.hs      - Interface de linha de comando (slc)
   test/
@@ -73,6 +81,8 @@ workspace/
 
 - Analise lexica com suporte a palavras reservadas, identificadores, literais, operadores e delimitadores
 - Analise sintatica com suporte a funcoes, structs, arrays, generics (forall), tipos funcao, for/while/if-else
+- Analise semantica com verificacao de tipos e escopo
+- Interpretador para execucao de programas SL
 - AST parametrizada por anotacoes para futuras etapas (tipos, spans)
 - Pretty printer com round-trip (parse -> pretty -> parse)
 - Operadores pos-fixos (i++, i--)

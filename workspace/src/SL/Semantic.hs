@@ -1,7 +1,6 @@
 {-# LANGUAGE LambdaCase #-}
 
 -- | Analisador semântico para a linguagem SL
--- Realiza verificação de tipos e análise de escopo
 module SL.Semantic
   ( -- * Tipos de Erro
     SemanticError (..),
@@ -25,19 +24,18 @@ where
 
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (isNothing)
 import SL.AST
 
 --------------------------------------------------------------------------------
 -- Tipos de Erro
 --------------------------------------------------------------------------------
 
--- | Erros semânticos de alto nível
 data SemanticError
   = TypeError TypeError
   | ScopeError ScopeError
   deriving (Show, Eq)
 
--- | Erros de tipo
 data TypeError
   = TypeMismatch Type Type String
   | InvalidOperator BinOp Type Type
@@ -54,7 +52,6 @@ data TypeError
   | InvalidCondition Type
   deriving (Show, Eq)
 
--- | Erros de escopo
 data ScopeError
   = UndefinedVariable String
   | UndefinedFunction String
@@ -70,7 +67,6 @@ data ScopeError
 -- Ambiente de Tipos
 --------------------------------------------------------------------------------
 
--- | Assinatura de função
 data FuncSig = FuncSig
   { funcParams :: [Type],
     funcReturn :: Type,
@@ -78,16 +74,12 @@ data FuncSig = FuncSig
   }
   deriving (Show, Eq)
 
--- | Ambiente de variáveis (escopos aninhados)
 type TypeEnv = [Map String Type]
 
--- | Ambiente de structs
 type StructEnv = Map String [(String, Type)]
 
--- | Ambiente de funções
 type FuncEnv = Map String FuncSig
 
--- | Estado do verificador de tipos
 data CheckerState = CheckerState
   { csVars :: TypeEnv,
     csStructs :: StructEnv,
@@ -96,7 +88,6 @@ data CheckerState = CheckerState
     csErrors :: [SemanticError]
   }
 
--- | Estado inicial
 initState :: CheckerState
 initState =
   CheckerState
@@ -107,7 +98,6 @@ initState =
       csErrors = []
     }
 
--- | Funções builtin
 builtinFuncs :: FuncEnv
 builtinFuncs =
   Map.fromList
@@ -121,15 +111,12 @@ builtinFuncs =
 -- Operações de Ambiente
 --------------------------------------------------------------------------------
 
--- | Entra em novo escopo
 pushScope :: CheckerState -> CheckerState
 pushScope st = st {csVars = Map.empty : csVars st}
 
--- | Sai do escopo atual
 popScope :: CheckerState -> CheckerState
 popScope st = st {csVars = drop 1 (csVars st)}
 
--- | Adiciona variável ao escopo atual
 addVar :: String -> Type -> CheckerState -> Either SemanticError CheckerState
 addVar name ty st =
   case csVars st of
@@ -139,7 +126,6 @@ addVar name ty st =
         then Left $ ScopeError $ DuplicateVariable name
         else Right $ st {csVars = Map.insert name ty scope : rest}
 
--- | Busca variável em todos os escopos
 lookupVar :: String -> CheckerState -> Maybe Type
 lookupVar name st = go (csVars st)
   where
@@ -148,21 +134,17 @@ lookupVar name st = go (csVars st)
       Just t -> Just t
       Nothing -> go rest
 
--- | Busca struct
 lookupStruct :: String -> CheckerState -> Maybe [(String, Type)]
 lookupStruct name st = Map.lookup name (csStructs st)
 
--- | Busca função
 lookupFunc :: String -> CheckerState -> Maybe FuncSig
 lookupFunc name st = Map.lookup name (csFuncs st)
 
--- | Busca campo de struct
 lookupField :: String -> String -> CheckerState -> Maybe Type
 lookupField structName fieldName st = do
   fields <- lookupStruct structName st
   lookup fieldName fields
 
--- | Adiciona erro ao estado
 addError :: SemanticError -> CheckerState -> CheckerState
 addError err st = st {csErrors = err : csErrors st}
 
@@ -170,7 +152,6 @@ addError err st = st {csErrors = err : csErrors st}
 -- Verificação de Tipos Principal
 --------------------------------------------------------------------------------
 
--- | Verifica programa completo
 checkProgram :: Program -> Either [SemanticError] ()
 checkProgram prog =
   let st = checkProgramState prog initState
@@ -178,17 +159,14 @@ checkProgram prog =
         then Right ()
         else Left (reverse $ csErrors st)
 
--- | Alias para checkProgram
 typeCheck :: Program -> Either [SemanticError] ()
 typeCheck = checkProgram
 
--- | Verifica programa e retorna estado final
 checkProgramState :: Program -> CheckerState -> CheckerState
 checkProgramState (Program decls) st =
   let st1 = collectDeclarations decls st
    in foldl checkTopLevel st1 decls
 
--- | Coleta declarações (primeira passagem)
 collectDeclarations :: [TopLevelDecl] -> CheckerState -> CheckerState
 collectDeclarations decls st = foldl collectDecl st decls
   where
@@ -202,33 +180,50 @@ collectDeclarations decls st = foldl collectDecl st decls
           then addError (ScopeError $ DuplicateFunction name) s
           else
             let paramTypes = map paramType params
-                ret = maybe TVoid id retType
+                hasTypeVars = not (null tvs)
+                hasUntypedParams = any (\(Param _ mt) -> isNothing mt) params
+                ret = case retType of
+                  Just t -> t
+                  Nothing ->
+                    if hasTypeVars || hasUntypedParams
+                      then TGeneric "__inferred__"
+                      else TVoid
                 sig = FuncSig paramTypes ret tvs
              in s {csFuncs = Map.insert name sig (csFuncs s)}
 
     fieldToTuple (Field n t) = (n, t)
-    paramType (Param _ mt) = maybe TInt id mt -- Default to int if not specified
+    paramType (Param _ mt) = case mt of
+      Just t -> t
+      Nothing -> TGeneric "__inferred_param__"
 
--- | Verifica declaração top-level
 checkTopLevel :: CheckerState -> TopLevelDecl -> CheckerState
 checkTopLevel st = \case
   StructDecl _ fields -> checkStructFields st fields
-  FuncDecl _ name params retType body ->
-    let ret = maybe TVoid id retType
+  FuncDecl tvs name params retType body ->
+    let hasTypeVars = not (null tvs)
+        hasUntypedParams = any (\(Param _ mt) -> isNothing mt) params
+        ret = case retType of
+          Just t -> t
+          Nothing ->
+            if hasTypeVars || hasUntypedParams
+              then TGeneric "__inferred__"
+              else TVoid
         st1 = st {csCurrentFunc = Just (name, ret)}
         st2 = pushScope st1
-        st3 = foldl addParam st2 params
+        st3 = foldl (addParamWithTypeVars tvs) st2 params
         st4 = foldl checkStmt st3 body
         st5 = checkReturnPaths name ret body st4
      in popScope $ st5 {csCurrentFunc = Nothing}
-  where
-    addParam s (Param n mt) =
-      let ty = maybe TInt id mt
-       in case addVar n ty s of
-            Left err -> addError err s
-            Right s' -> s'
 
--- | Verifica campos de struct
+addParamWithTypeVars :: [TypeVar] -> CheckerState -> Param -> CheckerState
+addParamWithTypeVars _tvs s (Param n mt) =
+  let ty = case mt of
+        Just t -> t
+        Nothing -> TGeneric ("__param_" ++ n ++ "__")
+   in case addVar n ty s of
+        Left err -> addError err s
+        Right s' -> s'
+
 checkStructFields :: CheckerState -> [Field] -> CheckerState
 checkStructFields st fields =
   foldl checkField st (zip ([0 ..] :: [Int]) fields)
@@ -238,18 +233,16 @@ checkStructFields st fields =
         then addError (ScopeError $ DuplicateField n) s
         else checkTypeExists t s
 
--- | Verifica se tipo existe
 checkTypeExists :: Type -> CheckerState -> CheckerState
 checkTypeExists ty st = case ty of
   TRecord name ->
     if Map.member name (csStructs st)
       then st
       else addError (ScopeError $ UndefinedStruct name) st
-  TArr elemT -> checkTypeExists elemT st
+  TArr elemT _ -> checkTypeExists elemT st
   TFunc params ret -> foldl (flip checkTypeExists) (checkTypeExists ret st) params
   _ -> st
 
--- | Verifica caminhos de retorno
 checkReturnPaths :: String -> Type -> [Stmt] -> CheckerState -> CheckerState
 checkReturnPaths name retType body st
   | retType == TVoid = st
@@ -333,7 +326,7 @@ checkStmt st = \case
      in popScope st7
   SReturn mExpr ->
     case csCurrentFunc st of
-      Nothing -> st -- Error: return outside function (handled elsewhere)
+      Nothing -> st
       Just (_, expectedRet) ->
         case mExpr of
           Nothing ->
@@ -353,7 +346,6 @@ checkStmt st = \case
 -- Inferência de Tipos de Expressões
 --------------------------------------------------------------------------------
 
--- | Infere tipo de expressão
 inferExpr :: CheckerState -> Expr -> (Type, CheckerState)
 inferExpr st = \case
   EInt _ -> (TInt, st)
@@ -372,7 +364,7 @@ inferExpr st = \case
             then st2
             else addError (TypeError $ InvalidArrayIndex idxTy) st2
      in case arrTy of
-          TArr elemTy -> (elemTy, st3)
+          TArr elemTy _ -> (elemTy, st3)
           _ -> (TInt, addError (TypeError $ NotAnArray arrTy) st3)
   EFieldAccess objE fieldName ->
     let (objTy, st1) = inferExpr st objE
@@ -381,6 +373,12 @@ inferExpr st = \case
             case lookupField structName fieldName st1 of
               Just fieldTy -> (fieldTy, st1)
               Nothing -> (TInt, addError (ScopeError $ UndefinedField structName fieldName) st1)
+          TArr _ _ ->
+            if fieldName == "size"
+              then (TInt, st1)
+              else (TInt, addError (ScopeError $ UndefinedField "array" fieldName) st1)
+          TGeneric _ ->
+            (TInt, st1)
           _ -> (TInt, addError (TypeError $ NotAStruct objTy) st1)
   EBinOp op left right ->
     let (leftTy, st1) = inferExpr st left
@@ -392,12 +390,20 @@ inferExpr st = \case
   ECall funcName args ->
     case lookupFunc funcName st of
       Nothing ->
-        -- Special case: print is polymorphic
         if funcName == "print"
           then
             let st1 = foldl (\s e -> snd $ inferExpr s e) st args
              in (TVoid, st1)
-          else (TInt, addError (ScopeError $ UndefinedFunction funcName) st)
+          else case lookupVar funcName st of
+            Just (TFunc paramTypes retType) ->
+              let (argTypes, st1) = inferArgs st args
+                  st2 =
+                    if length argTypes /= length paramTypes
+                      then addError (TypeError $ WrongNumberOfArgs funcName (length paramTypes) (length argTypes)) st1
+                      else checkArgTypes funcName paramTypes argTypes st1
+               in (retType, st2)
+            Just _ -> (TInt, addError (ScopeError $ UndefinedFunction funcName) st)
+            Nothing -> (TInt, addError (ScopeError $ UndefinedFunction funcName) st)
       Just (FuncSig paramTypes retType _) ->
         let (argTypes, st1) = inferArgs st args
             st2 =
@@ -411,14 +417,14 @@ inferExpr st = \case
           if sizeTy == TInt
             then st1
             else addError (TypeError $ InvalidArrayIndex sizeTy) st1
-     in (TArr elemType, st2)
+     in (TArr elemType Nothing, st2)
   EArrayLit elems ->
     case elems of
-      [] -> (TArr TInt, st) -- Empty array defaults to int[]
+      [] -> (TArr TInt Nothing, st)
       (e : es) ->
         let (firstTy, st1) = inferExpr st e
             (_, st2) = foldl inferAndCheck (firstTy, st1) es
-         in (TArr firstTy, st2)
+         in (TArr firstTy Nothing, st2)
     where
       inferAndCheck (expectedTy, s) expr =
         let (ty, s') = inferExpr s expr
@@ -442,15 +448,13 @@ inferExpr st = \case
               then (rest, s')
               else (rest, addError (TypeError $ TypeMismatch expectedTy exprTy "struct literal") s')
 
--- | Infere tipos de lista de argumentos
 inferArgs :: CheckerState -> [Expr] -> ([Type], CheckerState)
-inferArgs st args = foldl go ([], st) args
+inferArgs st = foldl go ([], st)
   where
     go (types, s) e =
       let (t, s') = inferExpr s e
        in (types ++ [t], s')
 
--- | Verifica tipos de argumentos
 checkArgTypes :: String -> [Type] -> [Type] -> CheckerState -> CheckerState
 checkArgTypes _ [] [] st = st
 checkArgTypes funcName (p : ps) (a : as) st =
@@ -461,7 +465,6 @@ checkArgTypes funcName (p : ps) (a : as) st =
    in checkArgTypes funcName ps as st'
 checkArgTypes _ _ _ st = st
 
--- | Infere tipo de operador binário
 inferBinOp :: BinOp -> Type -> Type -> CheckerState -> (Type, CheckerState)
 inferBinOp op leftTy rightTy st
   | isArithOp op =
@@ -486,7 +489,6 @@ inferBinOp op leftTy rightTy st
         else (TBool, addError (TypeError $ InvalidOperator op leftTy rightTy) st)
   | otherwise = (TInt, addError (TypeError $ InvalidOperator op leftTy rightTy) st)
 
--- | Infere tipo de operador unário
 inferUnaryOp :: UnaryOp -> Type -> CheckerState -> (Type, CheckerState)
 inferUnaryOp op exprTy st = case op of
   OpNeg ->
@@ -506,21 +508,20 @@ inferUnaryOp op exprTy st = case op of
       then (TInt, st)
       else (TInt, addError (TypeError $ InvalidUnaryOperator op exprTy) st)
 
--- | Verifica compatibilidade de tipos
 isCompatible :: Type -> Type -> Bool
 isCompatible TInt TInt = True
 isCompatible TFloat TFloat = True
-isCompatible TFloat TInt = True -- Coerção implícita
+isCompatible TFloat TInt = True
 isCompatible TString TString = True
 isCompatible TBool TBool = True
 isCompatible TVoid TVoid = True
-isCompatible (TArr t1) (TArr t2) = isCompatible t1 t2
+isCompatible (TArr t1 _) (TArr t2 _) = isCompatible t1 t2
 isCompatible (TRecord n1) (TRecord n2) = n1 == n2
 isCompatible (TFunc p1 r1) (TFunc p2 r2) =
   length p1 == length p2
     && all (uncurry isCompatible) (zip p1 p2)
     && isCompatible r1 r2
-isCompatible (TGeneric _) _ = True -- Generics são compatíveis com tudo
+isCompatible (TGeneric _) _ = True
 isCompatible _ (TGeneric _) = True
 isCompatible _ _ = False
 
@@ -528,7 +529,6 @@ isCompatible _ _ = False
 -- Inferência de Tipos
 --------------------------------------------------------------------------------
 
--- | Infere tipo de expressão (API pública)
 inferType :: Program -> Expr -> Either [SemanticError] Type
 inferType prog expr =
   let st = checkProgramState prog initState
@@ -604,7 +604,7 @@ showType = \case
   TString -> "string"
   TBool -> "bool"
   TVoid -> "void"
-  TArr t -> showType t ++ "[]"
+  TArr t _ -> showType t ++ "[]"
   TRecord name -> name
   TGeneric name -> name
   TFunc params ret -> "(" ++ unwords (map showType params) ++ ") -> " ++ showType ret

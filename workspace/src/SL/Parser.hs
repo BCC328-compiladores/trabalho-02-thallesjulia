@@ -65,7 +65,11 @@ parseType = do
   base <- parseBaseType
   foldArrays base
   where
-    foldArrays t = (brackets (optional intLiteral) *> foldArrays (TArr t)) <|> pure t
+    foldArrays t = do
+      mSize <- optional (brackets (optional intLiteral))
+      case mSize of
+        Nothing -> pure t
+        Just sz -> foldArrays (TArr t sz)
 
 parseBaseType :: Parser Type
 parseBaseType =

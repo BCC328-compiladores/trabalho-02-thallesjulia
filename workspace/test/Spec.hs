@@ -12,7 +12,7 @@ import SL.Interpreter (RuntimeError (..), interpret)
 import SL.Lexer
 import SL.Parser
 import SL.Pretty (pp)
-import SL.Semantic (SemanticError (..), checkProgram)
+import SL.Semantic (checkProgram)
 import System.Exit (exitFailure, exitSuccess)
 import System.IO.Unsafe (unsafePerformIO)
 import Text.Megaparsec (errorBundlePretty, parse)
@@ -216,7 +216,7 @@ astTests =
         Right (Program [FuncDecl [] "add" [Param "a" (Just TInt), Param "b" (Just TInt)] (Just TInt) _]) -> True
         _ -> False,
       runTest "Tipo array" $ case parseAST "func f(arr : int[]) : void { }" of
-        Right (Program [FuncDecl [] "f" [Param "arr" (Just (TArr TInt))] _ _]) -> True
+        Right (Program [FuncDecl [] "f" [Param "arr" (Just (TArr TInt Nothing))] _ _]) -> True
         _ -> False,
       runTest "Forall" $ case parseAST "forall a b . func id(x : a) : b { return x; }" of
         Right (Program [FuncDecl ["a", "b"] "id" _ _ _]) -> True
@@ -266,7 +266,7 @@ prettyTests =
       runTest "Tipo string" $ pp TString == "string",
       runTest "Tipo bool" $ pp TBool == "bool",
       runTest "Tipo void" $ pp TVoid == "void",
-      runTest "Tipo array" $ pp (TArr TInt) == "int[]",
+      runTest "Tipo array" $ pp (TArr TInt Nothing) == "int[]",
       runTest "Tipo funcao" $ pp (TFunc [TInt] TInt) == "(int) -> int",
       runTest "Expr int" $ pp (EInt 42) == "42",
       runTest "Expr float" $ pp (EFloat 3.14) == "3.14",
