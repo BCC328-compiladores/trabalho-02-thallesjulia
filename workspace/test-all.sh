@@ -79,7 +79,21 @@ for file in "${example_files[@]}"; do
     run_test "pretty" "$file"
 done
 
-# Fase 4: Testes Unitarios
+# Fase 4: Analise Semantica
+echo ""
+echo "=== Analise Semantica (--check) ==="
+for file in "${example_files[@]}"; do
+    run_test "check" "$file"
+done
+
+# Fase 5: Interpretador
+echo ""
+echo "=== Interpretador (--run) ==="
+for file in "${example_files[@]}"; do
+    run_test "run" "$file"
+done
+
+# Fase 6: Testes Unitarios
 echo ""
 echo "=== Testes Unitarios (cabal test) ==="
 echo ""
@@ -88,6 +102,7 @@ test_exit_code=$?
 
 if [ $test_exit_code -eq 0 ]; then
     echo "  [OK] Suite de testes unitarios"
+    ((passed++))
 else
     echo "  [FAIL] Suite de testes unitarios"
     ((failed++))

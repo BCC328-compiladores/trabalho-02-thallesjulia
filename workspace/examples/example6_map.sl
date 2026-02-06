@@ -6,3 +6,7 @@ forall a b . func map(f : (a) -> b, v : a[]) : b[] {
     }
     return result;
 }
+
+func main() : void {
+    print(0);
+}

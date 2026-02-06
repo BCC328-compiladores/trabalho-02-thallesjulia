@@ -8,10 +8,13 @@ import Data.Either (isLeft, isRight)
 import Data.Text (Text)
 import Data.Text qualified as T
 import SL.AST
+import SL.Interpreter (RuntimeError (..), interpret)
 import SL.Lexer
 import SL.Parser
 import SL.Pretty (pp)
+import SL.Semantic (checkProgram)
 import System.Exit (exitFailure, exitSuccess)
+import System.IO.Unsafe (unsafePerformIO)
 import Text.Megaparsec (errorBundlePretty, parse)
 
 --------------------------------------------------------------------------------
@@ -213,7 +216,7 @@ astTests =
         Right (Program [FuncDecl [] "add" [Param "a" (Just TInt), Param "b" (Just TInt)] (Just TInt) _]) -> True
         _ -> False,
       runTest "Tipo array" $ case parseAST "func f(arr : int[]) : void { }" of
-        Right (Program [FuncDecl [] "f" [Param "arr" (Just (TArr TInt))] _ _]) -> True
+        Right (Program [FuncDecl [] "f" [Param "arr" (Just (TArr TInt Nothing))] _ _]) -> True
         _ -> False,
       runTest "Forall" $ case parseAST "forall a b . func id(x : a) : b { return x; }" of
         Right (Program [FuncDecl ["a", "b"] "id" _ _ _]) -> True
@@ -263,7 +266,7 @@ prettyTests =
       runTest "Tipo string" $ pp TString == "string",
       runTest "Tipo bool" $ pp TBool == "bool",
       runTest "Tipo void" $ pp TVoid == "void",
-      runTest "Tipo array" $ pp (TArr TInt) == "int[]",
+      runTest "Tipo array" $ pp (TArr TInt Nothing) == "int[]",
       runTest "Tipo funcao" $ pp (TFunc [TInt] TInt) == "(int) -> int",
       runTest "Expr int" $ pp (EInt 42) == "42",
       runTest "Expr float" $ pp (EFloat 3.14) == "3.14",
@@ -323,6 +326,305 @@ roundTripTests =
         Right _ -> True
 
 --------------------------------------------------------------------------------
+-- Testes do Analisador Semântico
+--------------------------------------------------------------------------------
+
+semanticOK, semanticFail :: Text -> Bool
+semanticOK src = case parseAST src of
+  Left _ -> False
+  Right ast -> isRight $ checkProgram ast
+semanticFail src = case parseAST src of
+  Left _ -> False
+  Right ast -> isLeft $ checkProgram ast
+
+semanticTests :: TestGroup
+semanticTests =
+  TestGroup
+    "Analise Semantica (Verificacao de Tipos)"
+    [ runTest "Funcao main valida" $ semanticOK "func main() : int { return 0; }",
+      runTest "Declaracao tipada" $ semanticOK "func main() : void { let x : int = 42; }",
+      runTest "Declaracao com inferencia" $ semanticOK "func main() : void { let x = 42; }",
+      runTest "Operacoes aritmeticas int" $ semanticOK "func main() : int { return 1 + 2 * 3; }",
+      runTest "Operacoes aritmeticas float" $ semanticOK "func main() : float { return 1.0 + 2.0; }",
+      runTest "Operacoes relacionais" $ semanticOK "func main() : bool { return 1 < 2; }",
+      runTest "Operacoes logicas" $ semanticOK "func main() : bool { return true && false; }",
+      runTest "If com bool" $ semanticOK "func main() : void { if (true) { return; } }",
+      runTest "While com bool" $ semanticOK "func main() : void { while (true) { return; } }",
+      runTest "Chamada de funcao" $
+        semanticOK $
+          T.unlines
+            [ "func add(a : int, b : int) : int { return a + b; }",
+              "func main() : int { return add(1, 2); }"
+            ],
+      runTest "Struct definido" $
+        semanticOK $
+          T.unlines
+            [ "struct Point { x : int; y : int; }",
+              "func main() : void { let p : Point = Point{1, 2}; }"
+            ],
+      runTest "Acesso a campo de struct" $
+        semanticOK $
+          T.unlines
+            [ "struct Point { x : int; y : int; }",
+              "func main() : int { let p : Point = Point{1, 2}; return p.x; }"
+            ],
+      runTest "Array com new" $ semanticOK "func main() : void { let arr : int[] = new int[10]; }",
+      runTest "Acesso a array" $ semanticOK "func main() : int { let arr : int[] = new int[10]; return arr[0]; }",
+      runTest "Retorno compativel" $ semanticOK "func f() : float { return 1; }",
+      runTest "Negacao unaria int" $ semanticOK "func main() : int { return -42; }",
+      runTest "Negacao unaria bool" $ semanticOK "func main() : bool { return !true; }",
+      runTest "For loop" $ semanticOK "func main() : void { for (i = 0; i < 10; i = i + 1) { } }",
+      runTest "Shadowing valido" $
+        semanticOK $
+          T.unlines
+            [ "func main() : int {",
+              "  let x : int = 1;",
+              "  if (true) {",
+              "    let x : int = 2;",
+              "    return x;",
+              "  }",
+              "  return x;",
+              "}"
+            ],
+      runTest "Atribuicao valida" $ semanticOK "func main() : void { let x : int = 0; x = 42; }"
+    ]
+
+semanticErrorTests :: TestGroup
+semanticErrorTests =
+  TestGroup
+    "Erros Semanticos (deve rejeitar)"
+    [ runTest "Variavel indefinida" $ semanticFail "func main() : int { return x; }",
+      runTest "Funcao indefinida" $ semanticFail "func main() : int { return foo(); }",
+      runTest "Tipo incompativel" $ semanticFail "func main() : int { return true; }",
+      runTest "Soma int + string" $ semanticFail "func main() : int { return 1 + \"a\"; }",
+      runTest "If com int" $ semanticFail "func main() : void { if (1) { return; } }",
+      runTest "While com string" $ semanticFail "func main() : void { while (\"x\") { return; } }",
+      runTest "Numero errado de args" $
+        semanticFail $
+          T.unlines
+            [ "func add(a : int, b : int) : int { return a + b; }",
+              "func main() : int { return add(1); }"
+            ],
+      runTest "Struct indefinido" $ semanticFail "func main() : void { let p : Ponto = Ponto{1, 2}; }",
+      runTest "Campo indefinido" $
+        semanticFail $
+          T.unlines
+            [ "struct Point { x : int; y : int; }",
+              "func main() : int { let p : Point = Point{1, 2}; return p.z; }"
+            ],
+      runTest "Acesso array em nao-array" $ semanticFail "func main() : int { let x : int = 42; return x[0]; }",
+      runTest "Acesso campo em nao-struct" $ semanticFail "func main() : int { let x : int = 42; return x.field; }",
+      runTest "Indice nao-inteiro" $ semanticFail "func main() : int { let arr : int[] = new int[10]; return arr[1.5]; }",
+      runTest "Operador && com int" $ semanticFail "func main() : bool { return 1 && 2; }",
+      runTest "Negacao ! de int" $ semanticFail "func main() : bool { return !42; }"
+    ]
+
+--------------------------------------------------------------------------------
+-- Testes do Interpretador
+--------------------------------------------------------------------------------
+
+interpResult :: Text -> Either RuntimeError [String]
+interpResult src = case parseAST src of
+  Left _ -> Left NoMainFunction
+  Right ast -> unsafePerformIO $ interpret ast
+
+interpOK :: Text -> Bool
+interpOK src = isRight $ interpResult src
+
+interpOutput :: Text -> [String] -> Bool
+interpOutput src expected = case interpResult src of
+  Right output -> output == expected
+  Left _ -> False
+
+interpFail :: Text -> Bool
+interpFail src = isLeft $ interpResult src
+
+interpreterTests :: TestGroup
+interpreterTests =
+  TestGroup
+    "Interpretador"
+    [ runTest "Hello World" $
+        interpOutput
+          "func main() : void { print(\"Hello\"); }"
+          ["Hello"],
+      runTest "Print inteiro" $
+        interpOutput
+          "func main() : void { print(42); }"
+          ["42"],
+      runTest "Print float" $
+        interpOutput
+          "func main() : void { print(3.14); }"
+          ["3.14"],
+      runTest "Print bool" $
+        interpOutput
+          "func main() : void { print(true); }"
+          ["true"],
+      runTest "Operacoes aritmeticas" $
+        interpOutput
+          "func main() : void { print(1 + 2 * 3); }"
+          ["7"],
+      runTest "Variavel local" $
+        interpOutput
+          "func main() : void { let x : int = 42; print(x); }"
+          ["42"],
+      runTest "If-else true" $
+        interpOutput
+          "func main() : void { if (true) { print(1); } else { print(2); } }"
+          ["1"],
+      runTest "If-else false" $
+        interpOutput
+          "func main() : void { if (false) { print(1); } else { print(2); } }"
+          ["2"],
+      runTest "While loop" $
+        interpOutput
+          ( T.unlines
+              [ "func main() : void {",
+                "  let i : int = 0;",
+                "  while (i < 3) {",
+                "    print(i);",
+                "    i = i + 1;",
+                "  }",
+                "}"
+              ]
+          )
+          ["0", "1", "2"],
+      runTest "Fatorial recursivo" $
+        interpOutput
+          ( T.unlines
+              [ "func factorial(n : int) : int {",
+                "  if (n <= 1) { return 1; }",
+                "  else { return n * factorial(n - 1); }",
+                "}",
+                "func main() : void { print(factorial(5)); }"
+              ]
+          )
+          ["120"],
+      runTest "Fibonacci" $
+        interpOutput
+          ( T.unlines
+              [ "func fib(n : int) : int {",
+                "  if (n <= 1) { return n; }",
+                "  else { return fib(n - 1) + fib(n - 2); }",
+                "}",
+                "func main() : void { print(fib(10)); }"
+              ]
+          )
+          ["55"],
+      runTest "Array basico" $
+        interpOutput
+          ( T.unlines
+              [ "func main() : void {",
+                "  let arr : int[] = new int[3];",
+                "  arr[0] = 10;",
+                "  arr[1] = 20;",
+                "  arr[2] = 30;",
+                "  print(arr[1]);",
+                "}"
+              ]
+          )
+          ["20"],
+      runTest "Struct basico" $
+        interpOutput
+          ( T.unlines
+              [ "struct Point { x : int; y : int; }",
+                "func main() : void {",
+                "  let p : Point = Point{10, 20};",
+                "  print(p.x);",
+                "  print(p.y);",
+                "}"
+              ]
+          )
+          ["10", "20"],
+      runTest "Atribuicao a campo de struct" $
+        interpOutput
+          ( T.unlines
+              [ "struct Point { x : int; y : int; }",
+                "func main() : void {",
+                "  let p : Point = Point{0, 0};",
+                "  p.x = 42;",
+                "  print(p.x);",
+                "}"
+              ]
+          )
+          ["42"],
+      runTest "Chamada de funcao com retorno" $
+        interpOutput
+          ( T.unlines
+              [ "func double(x : int) : int { return x * 2; }",
+                "func main() : void { print(double(21)); }"
+              ]
+          )
+          ["42"],
+      runTest "Operadores de comparacao" $
+        interpOutput
+          ( T.unlines
+              [ "func main() : void {",
+                "  print(1 < 2);",
+                "  print(2 > 1);",
+                "  print(1 == 1);",
+                "  print(1 != 2);",
+                "}"
+              ]
+          )
+          ["true", "true", "true", "true"],
+      runTest "Operadores logicos" $
+        interpOutput
+          ( T.unlines
+              [ "func main() : void {",
+                "  print(true && true);",
+                "  print(true || false);",
+                "  print(!false);",
+                "}"
+              ]
+          )
+          ["true", "true", "true"],
+      runTest "Escopo aninhado" $
+        interpOutput
+          ( T.unlines
+              [ "func main() : void {",
+                "  let x : int = 1;",
+                "  if (true) {",
+                "    let x : int = 2;",
+                "    print(x);",
+                "  }",
+                "  print(x);",
+                "}"
+              ]
+          )
+          ["2", "1"],
+      runTest "Negacao unaria" $
+        interpOutput
+          "func main() : void { print(-42); }"
+          ["-42"],
+      runTest "Divisao inteira" $
+        interpOutput
+          "func main() : void { print(7 / 2); }"
+          ["3"],
+      runTest "Array literal" $
+        interpOutput
+          ( T.unlines
+              [ "func main() : void {",
+                "  let arr : int[] = [10, 20, 30];",
+                "  print(arr[0]);",
+                "  print(arr[2]);",
+                "}"
+              ]
+          )
+          ["10", "30"]
+    ]
+
+interpreterErrorTests :: TestGroup
+interpreterErrorTests =
+  TestGroup
+    "Erros de Execucao (deve falhar)"
+    [ runTest "Divisao por zero" $ interpFail "func main() : int { return 1 / 0; }",
+      runTest "Indice fora dos limites" $
+        interpFail
+          "func main() : int { let arr : int[] = new int[3]; return arr[10]; }",
+      runTest "Sem funcao main" $ interpFail "func foo() : void { }"
+    ]
+
+--------------------------------------------------------------------------------
 -- Main
 --------------------------------------------------------------------------------
 
@@ -340,7 +642,11 @@ main = do
         parserErrorTests,
         astTests,
         prettyTests,
-        roundTripTests
+        roundTripTests,
+        semanticTests,
+        semanticErrorTests,
+        interpreterTests,
+        interpreterErrorTests
       ]
 
   let (passed, failed) = foldr (\(p, f) (tp, tf) -> (tp + p, tf + f)) (0, 0) results
